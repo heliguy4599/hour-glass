@@ -12,6 +12,7 @@
 		"solid-js": "^1.9.10"
 	},
 	"devDependencies": {
+		"@babel/plugin-proposal-decorators": "^7.29.0",
 		"@stylistic/eslint-plugin": "^5.9.0",
 		"@types/node": "^24.10.13",
 		"@typescript-eslint/eslint-plugin": "^8.56.0",
