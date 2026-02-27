@@ -1,31 +1,36 @@
-import { createSignal, type JSX } from "solid-js"
+import { createEffect, createMemo, createRenderEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
 
-type ComponentClass<P, C = abstract new ()=> {
-	template(): JSX.Element,
-	readonly _props: P,
-}> = C & {
-	readonly new: (props: P)=> JSX.Element,
-}
+type Props = Record<string, any>
 
-export function Component<P extends Record<string, any>>(): ComponentClass<P> {
-	abstract class Base {
+type PublifyConstructor<T, Args extends any[] = []> = (T extends { prototype: infer P }
+	? new (...args: Args)=> P
+	: never
+)
+
+// eslint-disable-next-line
+export function Component<P extends Props>() {
+	abstract class BaseComponent {
 		static get new(): (props: P)=> JSX.Element {
-			function to_ret<T extends typeof Base>(
-				this: new ()=> InstanceType<T>,
-				props: P,
-			): JSX.Element {
-				const instance = new this()
-				; (instance._props as any) = props
+			function to_ret<T extends PublifyConstructor<typeof BaseComponent, [P]>>(this: T, props: P): JSX.Element {
+				const instance = new this(props)
+				onMount(() => instance.onMount?.())
+				onCleanup(() => instance.onCleanup?.())
 				return instance.template()
 			}
-			// @ts-expect-error
-			return to_ret.bind(this)
+			return to_ret.bind(this as any)
+		}
+
+		protected readonly _props: P
+
+		protected constructor(props: P) {
+			this._props = props
 		}
 
 		abstract template(): JSX.Element
-		readonly _props!: P
+		onMount(): void {}
+		onCleanup(): void {}
 	}
-	return Base
+	return BaseComponent
 }
 
 export function Signal(_target: undefined, context: ClassFieldDecoratorContext): void {
@@ -39,4 +44,47 @@ export function Signal(_target: undefined, context: ClassFieldDecoratorContext):
 			configurable: true,
 		})
 	})
+}
+
+export function Memo(_target: unknown, context: ClassGetterDecoratorContext): void {
+	context.addInitializer(function () {
+		const getter = find_getter(this, context.name)
+		const memo = createMemo(() => getter.call(this))
+		Object.defineProperty(this, context.name, {
+			get: memo,
+			enumerable: true,
+			configurable: true,
+		})
+	})
+}
+
+export function Effect(
+	_target: unknown,
+	context: ClassMethodDecoratorContext<unknown, ()=> any>,
+): void {
+	context.addInitializer(function () {
+		const original = (this as any)[context.name]
+		if (typeof original !== "function") return
+		createEffect(() => original.call(this))
+	})
+}
+
+export function RenderEffect(
+	_target: unknown,
+	context: ClassMethodDecoratorContext<unknown, ()=> any>,
+): void {
+	context.addInitializer(function () {
+		const original = (this as any)[context.name]
+		if (typeof original !== "function") return
+		createRenderEffect(() => original.call(this))
+	})
+}
+
+function find_getter(obj: any, key: string | symbol): ()=> any {
+	while (obj) {
+		const desc = Object.getOwnPropertyDescriptor(obj, key)
+		if (typeof desc?.get === "function") return desc.get
+		obj = Object.getPrototypeOf(obj)
+	}
+	throw new Error(`@Memo: getter not found for ${String(key)}`)
 }
