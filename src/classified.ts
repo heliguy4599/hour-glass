@@ -1,4 +1,12 @@
-import { createEffect, createMemo, createRenderEffect, createSignal, onCleanup, onMount, type JSX } from "solid-js"
+import {
+	createEffect,
+	createMemo,
+	createRenderEffect,
+	createSignal,
+	onCleanup,
+	onMount,
+	type JSX,
+} from "solid-js"
 
 type Props = Record<string, any>
 
@@ -6,6 +14,15 @@ type PublifyConstructor<T, Args extends any[] = []> = (T extends { prototype: in
 	? new (...args: Args)=> P
 	: never
 )
+
+const no_construct = Symbol("no_construct")
+
+const REGISTER = Symbol("REGISTER_WTIH")
+
+type RegistrableFunction = ((...args: any[])=> any) & {
+	[REGISTER]: (instance: object)=> ((...args: any[])=> any) | void,
+}
+const is_registrable_function = (fn: Function): fn is RegistrableFunction => (fn as any)[REGISTER] !== undefined
 
 // eslint-disable-next-line
 export function Component<P extends Props>() {
@@ -15,6 +32,20 @@ export function Component<P extends Props>() {
 				const instance = new this(props)
 				onMount(() => instance.onMount?.())
 				onCleanup(() => instance.onCleanup?.())
+				const proto = Object.getPrototypeOf(instance)
+				for (const [key, desc] of Object.entries(Object.getOwnPropertyDescriptors(proto))) {
+					if (typeof desc.value === "function" && is_registrable_function(desc.value)) {
+						const value = (desc.value as RegistrableFunction)[REGISTER](instance)
+						if (value) {
+							Object.defineProperty(instance, key, {
+								value,
+								enumerable: desc.enumerable,
+								configurable: desc.configurable,
+								writable: desc.writable,
+							})
+						}
+					}
+				}
 				return instance.template()
 			}
 			return to_ret.bind(this as any)
@@ -22,7 +53,7 @@ export function Component<P extends Props>() {
 
 		protected readonly _props: P
 
-		protected constructor(props: P) {
+		protected constructor(props: P & typeof no_construct) {
 			this._props = props
 		}
 
@@ -46,45 +77,29 @@ export function Signal(_target: undefined, context: ClassFieldDecoratorContext):
 	})
 }
 
-export function Memo(_target: unknown, context: ClassGetterDecoratorContext): void {
-	context.addInitializer(function () {
-		const getter = find_getter(this, context.name)
-		const memo = createMemo(() => getter.call(this))
-		Object.defineProperty(this, context.name, {
-			get: memo,
-			enumerable: true,
-			configurable: true,
-		})
-	})
-}
-
 export function Effect(
-	_target: unknown,
-	context: ClassMethodDecoratorContext<unknown, ()=> any>,
+	target: ()=> void,
+	_context: ClassMethodDecoratorContext<unknown, ()=> any>,
 ): void {
-	context.addInitializer(function () {
-		const original = (this as any)[context.name]
-		if (typeof original !== "function") return
-		createEffect(() => original.call(this))
-	})
+	(target as RegistrableFunction)[REGISTER] = (instance: object): void => createEffect(
+		() => target.call(instance),
+	)
 }
 
 export function RenderEffect(
-	_target: unknown,
-	context: ClassMethodDecoratorContext<unknown, ()=> any>,
+	target: ()=> void,
+	_context: ClassMethodDecoratorContext<unknown, ()=> any>,
 ): void {
-	context.addInitializer(function () {
-		const original = (this as any)[context.name]
-		if (typeof original !== "function") return
-		createRenderEffect(() => original.call(this))
-	})
+	(target as RegistrableFunction)[REGISTER] = (instance: object): void => createRenderEffect(
+		() => target.call(instance),
+	)
 }
 
-function find_getter(obj: any, key: string | symbol): ()=> any {
-	while (obj) {
-		const desc = Object.getOwnPropertyDescriptor(obj, key)
-		if (typeof desc?.get === "function") return desc.get
-		obj = Object.getPrototypeOf(obj)
-	}
-	throw new Error(`@Memo: getter not found for ${String(key)}`)
+export function Memo(
+	target: ()=> any,
+	_context: ClassGetterDecoratorContext,
+): void {
+	(target as RegistrableFunction)[REGISTER] = (instance: object): (()=> any) => createMemo(
+		() => target.call(instance),
+	)
 }

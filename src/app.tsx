@@ -1,17 +1,25 @@
 import { type JSX } from "solid-js"
-// import solidLogo from "./assets/solid.svg"
-// import viteLogo from "/vite.svg"
-import { Component, Memo, Signal } from "./classified"
+import { Component, Effect, Memo, Signal } from "./classified"
 
-export const App = (): JSX.Element => <div
-	class="box"
->
-	<input alpha={false}></input>
-	<Thing.new />
-</div>
+export class App extends Component() {
+	template(): JSX.Element {
+		return <div class="box">
+			<input alpha={false}></input>
+			<Thing.new start_at={10} />
+		</div >
+	}
+}
 
 class Thing extends Component<{ start_at?: number }>() {
 	@Signal count = 0
+
+	@Effect loggy(): void {
+		console.log("Count is now", this.count)
+	}
+
+	@Memo get combined(): number {
+		return this.doubled + this.count
+	}
 
 	@Memo get doubled(): number {
 		return this.count * 2
@@ -22,10 +30,11 @@ class Thing extends Component<{ start_at?: number }>() {
 			this.count = this._props.start_at
 		}
 		return <div>
-			<button>+ Inc</button>
-			Count: {this.count}!
-			Doubled: {this.doubled}!
-			<button>- Dec</button>
+			Count: {this.count}<br />
+			Dobule: {this.doubled}<br />
+			Combined: {this.combined}<br />
+			<button onClick={() => this.count += 1}>+ Inc</button>
+			<button onClick={() => this.count -= 1}>- Dec</button>
 		</div>
 	}
 }
