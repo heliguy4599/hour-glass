@@ -103,3 +103,32 @@ export function Memo(
 		() => target.call(instance),
 	)
 }
+
+// Func 1
+export function Debounce(ms: number) {
+	// Func 2
+	return function (target: Function, _context: ClassMethodDecoratorContext): void {
+		// Func 3
+		(target as RegistrableFunction)[REGISTER] = (instance: object) => {
+			let timer: ReturnType<typeof setTimeout> | undefined
+			// Func 4a
+			onCleanup(() => {
+				if (timer !== undefined) {
+					clearTimeout(timer)
+					timer = undefined
+				}
+			})
+			// Func 4b
+			return function (...args: any[]): void {
+				if (timer !== undefined) {
+					clearTimeout(timer)
+				}
+				// Func 5
+				timer = setTimeout(() => {
+					target.apply(instance as any, args)
+					timer = undefined
+				}, ms)
+			}
+		}
+	}
+}
