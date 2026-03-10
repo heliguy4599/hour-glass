@@ -26,6 +26,7 @@ export type OpKind = (
 	| "sub"
 	| "mult"
 	| "div"
+	| "modulo"
 	| "l_paren"
 	| "r_paren"
 )
@@ -53,8 +54,6 @@ export abstract class ValueToken extends Token {
 		super()
 		this.value = value
 	}
-
-	abstract format(): string
 }
 
 export class NumToken extends ValueToken {
@@ -76,10 +75,6 @@ export class NumToken extends ValueToken {
 	}
 
 	override readonly kind = "num"
-
-	override format(): string {
-		return trim_float(this.value)
-	}
 }
 
 // TODO: Handle leap years!!!!!!!!!!!
@@ -88,7 +83,7 @@ const month_max_days = {
 	not_leap_year: [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31],
 } as const
 
-class DateToken extends ValueToken {
+export class DateToken extends ValueToken {
 	static override try_lex(input: string, index: number): LexResult<DateToken> | null {
 		const matches = parse_chars(
 			input,
@@ -116,19 +111,6 @@ class DateToken extends ValueToken {
 
 	override readonly kind = "date"
 
-	override format(): string {
-		const DAY = duration_suffix_to_mult["DAY"]
-		const day_remainder = ((this.value % DAY) + DAY) % DAY
-		const time_string = day_remainder === 0 ? "" : new TimeToken(day_remainder).format()
-
-		const date = new Date(this.value)
-		const year = date.getUTCFullYear()
-		const month = (date.getUTCMonth() + 1).toString().padStart(2, "0")
-		const day = date.getUTCDate().toString().padStart(2, "0")
-
-		return `${year}_${month}_${day} ${time_string}`
-	}
-
 	readonly from_literal: boolean
 
 	constructor(value: number, from_literal?: boolean) {
@@ -139,7 +121,7 @@ class DateToken extends ValueToken {
 
 type TimeSuffixes = "AM" | "PM"
 
-class TimeToken extends ValueToken {
+export class TimeToken extends ValueToken {
 	static readonly suffixes: Record<string, TimeSuffixes> = {
 		a: "AM",
 		am: "AM",
@@ -191,39 +173,9 @@ class TimeToken extends ValueToken {
 	}
 
 	override readonly kind = "time"
-
-	override format(): string {
-		const DAY = duration_suffix_to_mult["DAY"]
-		const HOUR = duration_suffix_to_mult["HOUR"]
-		const MINUTE = duration_suffix_to_mult["MINUTE"]
-		const SECOND = duration_suffix_to_mult["SECOND"]
-
-		const day_offset = Math.floor(this.value / DAY)
-		const remainder = ((this.value % DAY) + DAY) % DAY
-		const hours = Math.floor(remainder / HOUR)
-		const minutes = Math.floor((remainder % HOUR) / MINUTE)
-		const seconds = Math.floor((remainder % MINUTE) / SECOND)
-		const millis = remainder % SECOND
-
-		const fraction = millis > 0 ? `.${Math.trunc(millis)}` : ""
-		const time_string = (
-			`${hours.toString().padStart(2, "0")}:`
-			+ `${minutes.toString().padStart(2, "0")}:`
-			+ `${seconds.toString().padStart(2, "0")}${fraction}`
-		)
-
-		if (day_offset === 0) {
-			return time_string
-		}
-
-		const abs_days = Math.abs(day_offset)
-		const day_label = abs_days === 1 ? "day" : "days"
-		const sign = day_offset > 0 ? "+" : "-"
-		return `${time_string} (${sign}${abs_days} ${day_label})`
-	}
 }
 
-class DurationToken extends ValueToken {
+export class DurationToken extends ValueToken {
 	static readonly #regex_suffixes = new RegExp(
 		Object.keys(duration_suffixes_to_unit)
 		.sort((a, b) => b.length - a.length)
@@ -260,33 +212,6 @@ class DurationToken extends ValueToken {
 	constructor(value: number, suffix?: DurationUnit) {
 		super(value)
 		this.from_suffix = suffix ?? ""
-	}
-
-	override format(): string {
-		let remaining = this.value
-		if (remaining === 0) return "0ms"
-		const sign = remaining < 0 ? "-" : ""
-		remaining = Math.abs(remaining)
-		const parts: string[] = []
-		let i = 0
-		for (const [unit, mult] of DurationToken.sorted_duration_units) {
-			const is_last = i === DurationToken.sorted_duration_units.length - 1
-			i += 1
-			if (remaining < mult && !is_last) continue
-			if (is_last) {
-				const amount = remaining / mult
-				if (amount !== 0) {
-					parts.push(`${trim_float(amount)}${duration_unit_to_display[unit]}`)
-				}
-				break
-			}
-			const whole = Math.floor(remaining / mult)
-			if (whole > 0) {
-				parts.push(`${whole}${duration_unit_to_display[unit]}`)
-				remaining -= whole * mult
-			}
-		}
-		return sign + parts.join(" ")
 	}
 }
 
@@ -327,6 +252,7 @@ const operator_specs: { [K in OpKind]: OperatorSpec } = {
 	sub: { raw: "-", precedence: 1, operate: (left, right) => left - right },
 	mult: { raw: "*", precedence: 2, operate: (left, right) => left * right },
 	div: { raw: "/", precedence: 2, operate: (left, right) => left / right },
+	modulo: { raw: "%", precedence: 2, operate: (left, right) => ((left % right) + right) % right },
 } as const
 
 export class OperatorToken extends Token {
@@ -378,28 +304,32 @@ type BinaryOpTable = {
 /* eslint-disable */
 export const binary_op_table: BinaryOpTable = {
 	num: {
-		plus: { num: "num",      date: null,       time: null,       duration: null       },
-		sub:  { num: "num",      date: null,       time: null,       duration: null       },
-		mult: { num: "num",      date: null,       time: null,       duration: "duration" },
-		div:  { num: "num",      date: null,       time: null,       duration: null },
+		plus:   { num: "num",      date: null,       time: null,       duration: null       },
+		sub:    { num: "num",      date: null,       time: null,       duration: null       },
+		mult:   { num: "num",      date: null,       time: null,       duration: "duration" },
+		div:    { num: "num",      date: null,       time: null,       duration: null       },
+		modulo: { num: "num",      date: null,       time: null,       duration: null       },
 	},
 	date: {
-		plus: { num: null,       date: null,       time: null,       duration: "date"     },
-		sub:  { num: null,       date: "duration", time: null,       duration: "date"     },
-		mult: { num: null,       date: null,       time: null,       duration: null       },
-		div:  { num: null,       date: null,       time: null,       duration: null       },
+		plus:   { num: null,       date: null,       time: null,       duration: "date"     },
+		sub:    { num: null,       date: "duration", time: null,       duration: "date"     },
+		mult:   { num: null,       date: null,       time: null,       duration: null       },
+		div:    { num: null,       date: null,       time: null,       duration: null       },
+		modulo: { num: null,       date: null,       time: null,       duration: null       },
 	},
 	time: {
-		plus: { num: null,       date: null,       time: null,       duration: "time"     },
-		sub:  { num: null,       date: null,       time: "duration", duration: "time"     },
-		mult: { num: null,       date: null,       time: null,       duration: null       },
-		div:  { num: null,       date: null,       time: null,       duration: null       },
+		plus:   { num: null,       date: null,       time: null,       duration: "time"     },
+		sub:    { num: null,       date: null,       time: "duration", duration: "time"     },
+		mult:   { num: null,       date: null,       time: null,       duration: null       },
+		div:    { num: null,       date: null,       time: null,       duration: null       },
+		modulo: { num: null,       date: null,       time: null,       duration: null       },
 	},
 	duration: {
-		plus: { num: null,       date: "date",     time: "time",     duration: "duration" },
-		sub:  { num: null,       date: null,       time: null,       duration: "duration" },
-		mult: { num: "duration", date: null,       time: null,       duration: null       },
-		div:  { num: "duration", date: null,       time: null,       duration: "num"      },
+		plus:   { num: null,       date: "date",     time: "time",     duration: "duration" },
+		sub:    { num: null,       date: null,       time: null,       duration: "duration" },
+		mult:   { num: "duration", date: null,       time: null,       duration: null       },
+		div:    { num: "duration", date: null,       time: null,       duration: "num"      },
+		modulo: { num: "duration", date: null,       time: null,       duration: "duration" },
 	},
 } as const
 /* eslint-enable */
@@ -421,6 +351,7 @@ export const unary_op_table: UnaryOpTable = {
 	},
 	mult: {},
 	div: {},
+	modulo: {},
 } as const
 
 type ImplicitOpTable = {

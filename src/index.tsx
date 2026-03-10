@@ -4,4 +4,4 @@ import { App } from "./app.tsx"
 
 const root = document.getElementById("root")
 
-render(() => <App.new />, root!)
+render(() => <App />, root!)

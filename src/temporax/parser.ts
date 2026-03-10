@@ -16,6 +16,10 @@ class TokenStack<T extends ValueToken | OperatorToken> {
 		return this.#items.length
 	}
 
+	clear(): void {
+		this.#items.length = 0
+	}
+
 	push(item: T): void {
 		this.#items.push(item)
 	}
@@ -34,16 +38,9 @@ class TokenStack<T extends ValueToken | OperatorToken> {
 }
 
 export class Parser {
-	readonly #input: string
-	readonly #lexer
 	readonly #operators = new TokenStack<OperatorToken>()
 	readonly #values = new TokenStack<ValueToken>()
-	#last_was_value = false // VERY IMPORTANT TO START FALSE!!!
-
-	constructor(input: string) {
-		this.#input = input
-		this.#lexer = new Lexer(this.#input)
-	}
+	#last_was_value = false
 
 	collapse(): void {
 		const right: ValueToken = this.#values.pop()
@@ -72,8 +69,13 @@ export class Parser {
 		this.#values.push(value)
 	}
 
-	evaluate(): ValueToken {
-		for (const [, token] of this.#lexer.lexinate()) {
+	evaluate(input: string): ValueToken {
+		this.#last_was_value = false
+		this.#operators.clear()
+		this.#values.clear()
+		const lexer = new Lexer(input)
+
+		for (const [, token] of lexer.lexinate()) {
 			if (token instanceof ValueToken) {
 				if (this.#last_was_value) {
 					const left = this.#values.pop()
