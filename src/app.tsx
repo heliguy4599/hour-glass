@@ -4,6 +4,8 @@ import { formatters, type FormatConfig } from "./formatters"
 import { Parser } from "./temporax/parser"
 import { createStore } from "solid-js/store"
 
+import { Keypad } from "./keypad"
+
 export const App = (): JSX.Element => {
 	const parser = ezSignal(new Parser())
 	const result = ezSignal("")
@@ -50,5 +52,6 @@ export const App = (): JSX.Element => {
 			<option value="12">12 Hour</option>
 			<option value="24">24 Hour</option>
 		</select>
+		<Keypad />
 	</div>
 }

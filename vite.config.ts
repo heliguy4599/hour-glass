@@ -9,4 +9,5 @@ export default defineConfig({
 			},
 		}),
 	],
+	base: "/hour-glass/",
 })

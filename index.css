@@ -1,11 +1,6 @@
-@media (prefers-color-scheme: light) {
-	:root {
-		--bulma-body-background-color: #f0f0f0;
-	}
-}
+@import url("https://cdn.jsdelivr.net/npm/water.css@2/out/water.css");
 
-@media (prefers-color-scheme: dark) {
-	:root {
-		--bulma-body-background-color: #2d2d2d;
-	}
+/* remove Water.css focus ring for mouse clicks */
+:focus:not(:focus-visible) {
+  box-shadow: none;
 }
